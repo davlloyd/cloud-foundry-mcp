@@ -21,15 +21,20 @@ public class CfOrganizationService extends CfBaseService {
     }
 
     @McpTool(description = ORGANIZATION_LIST)
-    public List<OrganizationSummary> organizationsList() {
-        return operationsFactory.getDefaultOperations().organizations().list().collectList().block();
+    public List<OrganizationSummary> organizationsList(
+            @McpToolParam(description = ORG_PARAM, required = false) String organization,
+            @McpToolParam(description = SPACE_PARAM, required = false) String space) {
+        return getOperations(organization, space).organizations().list().collectList().block();
     }
 
     @McpTool(description = ORGANIZATION_DETAILS)
-    public OrganizationDetail organizationDetails(@McpToolParam(description = ORG_NAME_PARAM) String organizationName) {
+    public OrganizationDetail organizationDetails(
+            @McpToolParam(description = ORG_NAME_PARAM) String organizationName,
+            @McpToolParam(description = ORG_PARAM, required = false) String organization,
+            @McpToolParam(description = SPACE_PARAM, required = false) String space) {
         OrganizationInfoRequest request = OrganizationInfoRequest.builder()
                 .name(organizationName)
                 .build();
-        return operationsFactory.getDefaultOperations().organizations().get(request).block();
+        return getOperations(organization, space).organizations().get(request).block();
     }
 }
