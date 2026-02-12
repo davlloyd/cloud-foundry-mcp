@@ -13,3 +13,9 @@ spring:
           # On CF, java-cfenv-boot-pivotal-sso auto-configures this from the SSO tile binding.
           # For local development, set the SSO_ISSUER_URI environment variable.
           issuer-uri: ${SSO_ISSUER_URI:}
+
+# The SSO auth domain used as the authorization server in OAuth 2.0 Protected Resource Metadata.
+# On CF, java-cfenv-boot-pivotal-sso sets ssoServiceUrl from the SSO tile's auth_domain.
+# For local dev, set SSO_AUTH_DOMAIN (e.g., https://login.sys.mycf.com).
+sso:
+  auth-domain: ${ssoServiceUrl:${SSO_AUTH_DOMAIN:}}
