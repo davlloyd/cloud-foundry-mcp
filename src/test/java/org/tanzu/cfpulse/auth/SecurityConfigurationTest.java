@@ -7,11 +7,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
-import org.springframework.security.config.Customizer;
-import org.springframework.security.config.annotation.web.builders.HttpSecurity;
-import org.springframework.security.config.annotation.web.configurers.CsrfConfigurer;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
-import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -23,20 +19,22 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * Tests that the security filter chain correctly enforces JWT authentication.
+ * Tests that the production {@link SecurityConfiguration} correctly enforces JWT
+ * authentication on the MCP endpoint.
  * <p>
- * The production {@link SecurityConfiguration} is disabled by not setting the
- * {@code spring.security.oauth2.resourceserver.jwt.issuer-uri} property (it's
- * conditional on that property). This test provides its own security filter chain
- * with a mock {@link JwtDecoder} to verify the security behavior without needing
- * a live authorization server.
+ * Setting {@code spring.security.oauth2.resourceserver.jwt.issuer-uri} activates
+ * the production {@link SecurityConfiguration} and keeps
+ * {@link StaticCredentialsSecurityConfiguration} inactive. A mock
+ * {@link JwtDecoder} replaces the auto-configured one so that no live
+ * authorization server is required.
  */
 @SpringBootTest
 @AutoConfigureMockMvc
 @Import(SecurityConfigurationTest.TestSecurityConfig.class)
 @TestPropertySource(properties = {
-        "cf.apiHost=api.test.example.com"
-        // issuer-uri intentionally NOT set, disabling the production SecurityConfiguration
+        "cf.apiHost=api.test.example.com",
+        "spring.security.oauth2.resourceserver.jwt.issuer-uri=https://uaa.test.example.com/oauth/token",
+        "sso.auth-domain=https://login.test.example.com"
 })
 class SecurityConfigurationTest {
 
@@ -46,7 +44,7 @@ class SecurityConfigurationTest {
     @Test
     void unauthenticatedRequestIsRejected() throws Exception {
         mockMvc.perform(post("/mcp")
-                        .contentType("application/json")
+                        .contentType(APPLICATION_JSON)
                         .content("{\"jsonrpc\":\"2.0\",\"method\":\"initialize\",\"id\":1}"))
                 .andExpect(status().isUnauthorized());
     }
@@ -69,15 +67,6 @@ class SecurityConfigurationTest {
         @Bean
         JwtDecoder jwtDecoder() {
             return mock(JwtDecoder.class);
-        }
-
-        @Bean
-        SecurityFilterChain testSecurityFilterChain(HttpSecurity http) throws Exception {
-            return http
-                    .authorizeHttpRequests(auth -> auth.anyRequest().authenticated())
-                    .oauth2ResourceServer(oauth2 -> oauth2.jwt(Customizer.withDefaults()))
-                    .csrf(CsrfConfigurer::disable)
-                    .build();
         }
     }
 }

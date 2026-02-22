@@ -7,19 +7,86 @@ This MCP Server provides an LLM interface for interacting with your Cloud Foundr
 ### IMPORTANT
 This MCP Server now uses the Streamable HTTP Transport, instead of SSE. If you are connecting to this server with Tanzu Platform Chat, be sure to consult the [README](https://github.com/cpage-pivotal/cf-mcp-client) for instructions on configuring the service binding for Streamable transport.
 
+## Authentication Modes
+
+The server supports two mutually exclusive authentication modes, determined automatically at startup:
+
+| Mode | When it activates | MCP endpoint security | CF API calls run as |
+|---|---|---|---|
+| **Static Credentials** | `CF_USERNAME` and `CF_PASSWORD` are set, no OAuth2 `issuer-uri` | Open (no auth required) | The configured service account |
+| **OAuth 2.1 (SSO)** | `spring.security.oauth2.resourceserver.jwt.issuer-uri` is set (auto-configured on CF via the SSO tile) | JWT bearer token required | The authenticated user (token relay) |
+
+### Static Credentials Mode
+
+When `CF_USERNAME` and `CF_PASSWORD` environment variables are provided and no OAuth2 issuer is configured, the server disables HTTP security and uses the static credentials for all CF API calls. This is the simplest setup for local development and STDIO transport with tools like Claude Desktop.
+
+### OAuth 2.1 Mode
+
+When deployed to Cloud Foundry with a Tanzu SSO tile binding, the `java-cfenv-boot-pivotal-sso` library auto-configures the JWT issuer-uri, activating OAuth2 resource server security. Every request to `/mcp` must include a valid bearer token. The server relays the user's token to the CF API so that operations execute under the user's own permissions and role-based access control. See [FLOW.md](FLOW.md) for the full OAuth authorization flow.
+
 ## Building the Server
 
 ```bash
 ./mvnw clean package
 ```
 
-### Deploying to Cloud Foundry with Variables File
+## Running Locally with Static Credentials
 
-When deploying the MCP server to Cloud Foundry, use a variables file to inject credentials. This approach keeps sensitive credentials out of your manifest files and version control.
+Set the CF environment variables and run the jar directly. No OAuth infrastructure is needed.
 
-#### Create a Variables File
+```bash
+export CF_APIHOST=api.sys.mycf.com
+export CF_USERNAME=your-cf-username
+export CF_PASSWORD=your-cf-password
+export CF_ORG=your-org
+export CF_SPACE=your-space
 
-Create a file named `vars.yaml` with your Cloud Foundry credentials:
+java -Dspring.ai.mcp.server.transport=stdio -jar target/cloud-foundry-mcp-0.0.1-SNAPSHOT.jar --server.port=8040
+```
+
+Or configure it in Claude Desktop's `claude_desktop_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "cloud-foundry": {
+      "command": "java",
+      "args": [
+        "-Dspring.ai.mcp.server.transport=stdio",
+        "-Dlogging.file.name=cloud-foundry-mcp.log",
+        "-jar",
+        "/path/to/cloud-foundry-mcp/target/cloud-foundry-mcp-0.0.1-SNAPSHOT.jar",
+        "--server.port=8040"
+      ],
+      "env": {
+        "CF_APIHOST": "api.sys.mycf.com",
+        "CF_USERNAME": "your-cf-username",
+        "CF_PASSWORD": "your-cf-password",
+        "CF_ORG": "your-org",
+        "CF_SPACE": "your-space"
+      }
+    }
+  }
+}
+```
+
+## Deploying to Cloud Foundry
+
+### With OAuth 2.1 (SSO Tile)
+
+The recommended deployment model. Bind the app to a `p-identity` (SSO) service instance and provide only `CF_APIHOST`. No static credentials are needed — each user authenticates via the SSO tile and operations execute under their own identity.
+
+```bash
+cf push
+```
+
+The `manifest.yml` is pre-configured with an `sso` service binding and the `CF_APIHOST` variable.
+
+### With Static Credentials (Variables File)
+
+For environments without an SSO tile, use a variables file to inject static credentials. This approach keeps sensitive values out of your manifest and version control.
+
+Create a file named `vars.yaml`:
 
 ```yaml
 CF_APIHOST: api.sys.mycf.com
@@ -34,9 +101,7 @@ CF_SPACE: your-space
 > echo "vars.yaml" >> .gitignore
 > ```
 
-#### Deploy the Application
-
-Deploy using the `--vars-file` flag:
+Uncomment the static credential variables in `manifest.yml`, then deploy:
 
 ```bash
 cf push --vars-file=vars.yaml
